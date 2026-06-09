@@ -7,6 +7,7 @@ import { createRequire } from "node:module";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
 import type { KiroAuthMethod, KiroCredentials } from "./oauth.js";
+import { regionFromProfileArn } from "./models.js";
 
 const require = createRequire(import.meta.url);
 
@@ -141,6 +142,8 @@ function tryKiroCliToken(
   if (tokenData.expires_at) expiresAt = new Date(tokenData.expires_at).getTime();
   if (!allowExpired && Date.now() >= expiresAt - 2 * 60 * 1000) return undefined;
   const region = tokenData.region || "us-east-1";
+  const profileArn = tokenData.profile_arn || tokenData.profileArn;
+  const kiroRegion = regionFromProfileArn(profileArn);
 
   if (authMethod === "desktop") {
     return {
@@ -151,7 +154,8 @@ function tryKiroCliToken(
       clientSecret: "",
       region,
       authMethod: "desktop",
-      profileArn: tokenData.profile_arn || tokenData.profileArn,
+      profileArn,
+      kiroRegion,
     };
   }
 
@@ -179,6 +183,8 @@ function tryKiroCliToken(
     clientSecret,
     region,
     authMethod: "idc",
+    profileArn,
+    kiroRegion,
   };
 }
 

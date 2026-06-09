@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filterModelsByRegion, KIRO_MODEL_IDS, kiroModels, resolveApiRegion, resolveKiroModel } from "../src/models.js";
+import { filterModelsByRegion, KIRO_MODEL_IDS, kiroModels, regionFromProfileArn, resolveApiRegion, resolveKiroModel } from "../src/models.js";
 
 describe("Feature 2: Model Definitions", () => {
   describe("resolveKiroModel", () => {
@@ -51,6 +51,30 @@ describe("Feature 2: Model Definitions", () => {
 
     it("defaults to us-east-1 when undefined", () => {
       expect(resolveApiRegion(undefined)).toBe("us-east-1");
+    });
+
+    it("prefers kiroRegion over ssoRegion", () => {
+      expect(resolveApiRegion("us-east-1", "eu-central-1")).toBe("eu-central-1");
+    });
+
+    it("prefers KIRO_REGION env var over everything", () => {
+      process.env.KIRO_REGION = "eu-central-1";
+      expect(resolveApiRegion("us-east-1", "us-east-1")).toBe("eu-central-1");
+      delete process.env.KIRO_REGION;
+    });
+  });
+
+  describe("regionFromProfileArn", () => {
+    it("extracts region from a valid profile ARN", () => {
+      expect(regionFromProfileArn("arn:aws:codewhisperer:eu-central-1:123:profile/test")).toBe("eu-central-1");
+    });
+
+    it("returns undefined for undefined input", () => {
+      expect(regionFromProfileArn(undefined)).toBeUndefined();
+    });
+
+    it("returns undefined for malformed ARN", () => {
+      expect(regionFromProfileArn("not-an-arn")).toBeUndefined();
     });
   });
 

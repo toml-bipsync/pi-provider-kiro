@@ -200,9 +200,19 @@ const API_REGION_MAP: Record<string, string> = {
   "eu-central-2": "eu-central-1",
 };
 
-export function resolveApiRegion(ssoRegion: string | undefined): string {
+export function resolveApiRegion(ssoRegion: string | undefined, kiroRegion?: string): string {
+  if (process.env.KIRO_REGION) return process.env.KIRO_REGION;
+  if (kiroRegion) return kiroRegion;
   if (!ssoRegion) return "us-east-1";
   return API_REGION_MAP[ssoRegion] ?? ssoRegion;
+}
+
+/** Extract the Kiro service region from a profileArn (e.g. "arn:aws:codewhisperer:eu-central-1:..."). */
+export function regionFromProfileArn(profileArn: string | undefined): string | undefined {
+  if (!profileArn) return undefined;
+  const parts = profileArn.split(":");
+  // ARN format: arn:partition:service:region:account:resource
+  return parts.length >= 4 ? parts[3] : undefined;
 }
 
 /**

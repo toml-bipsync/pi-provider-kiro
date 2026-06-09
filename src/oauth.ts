@@ -32,6 +32,8 @@ export interface KiroCredentials extends OAuthCredentials {
   authMethod: KiroAuthMethod;
   /** Required for Google/GitHub social profiles; ListAvailableProfiles may return empty for these tokens. */
   profileArn?: string;
+  /** Kiro service region (us-east-1 or eu-central-1). Independent of the IDC/SSO region used for auth. */
+  kiroRegion?: string;
 }
 
 /**
@@ -49,8 +51,9 @@ export async function loginKiro(
   if (!process.env.VITEST) {
     try {
       const { resolveApiRegion, updateKiroModelsCache } = await import("./models.js");
-      const region = resolveApiRegion((creds as KiroCredentials).region);
-      updateKiroModelsCache(creds.access, region, (creds as KiroCredentials).profileArn).catch(() => {});
+      const kc = creds as KiroCredentials;
+      const region = resolveApiRegion(kc.region, kc.kiroRegion);
+      updateKiroModelsCache(creds.access, region, kc.profileArn).catch(() => {});
     } catch {
       // Ignore cache errors
     }
@@ -145,8 +148,9 @@ export async function refreshKiroToken(credentials: OAuthCredentials): Promise<O
   if (!process.env.VITEST) {
     try {
       const { resolveApiRegion, updateKiroModelsCache } = await import("./models.js");
-      const region = resolveApiRegion((refreshed as KiroCredentials).region);
-      updateKiroModelsCache(refreshed.access, region, (refreshed as KiroCredentials).profileArn).catch(() => {});
+      const kc = refreshed as KiroCredentials;
+      const region = resolveApiRegion(kc.region, kc.kiroRegion);
+      updateKiroModelsCache(refreshed.access, region, kc.profileArn).catch(() => {});
     } catch {
       // Ignore cache errors
     }
@@ -212,14 +216,18 @@ async function refreshKiroTokenInternal(credentials: OAuthCredentials): Promise<
 }
 
 async function refreshKiroTokenDirect(credentials: OAuthCredentials): Promise<OAuthCredentials> {
+  const { regionFromProfileArn, resolveApiRegion } = await import("./models.js");
   const parts = credentials.refresh.split("|");
   const refreshToken = parts[0] ?? "";
   const authMethod = (parts[parts.length - 1] ?? "idc") as KiroAuthMethod;
-  const region = (credentials as KiroCredentials).region || "us-east-1";
+  const kc = credentials as KiroCredentials;
+  const region = kc.region || "us-east-1";
+  const kiroRegion = kc.kiroRegion || regionFromProfileArn(kc.profileArn);
 
   if (authMethod === "desktop") {
-    // Kiro desktop app tokens use a different refresh endpoint
-    const url = KIRO_DESKTOP_REFRESH_URL.replace("{region}", region);
+    // Desktop refresh uses the Kiro service region, not the IDC region
+    const desktopRegion = resolveApiRegion(region, kiroRegion);
+    const url = KIRO_DESKTOP_REFRESH_URL.replace("{region}", desktopRegion);
     const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", "User-Agent": "pi-cli" },
@@ -233,6 +241,7 @@ async function refreshKiroTokenDirect(credentials: OAuthCredentials): Promise<OA
       profileArn?: string;
     };
     if (!data.accessToken) throw new Error("Desktop token refresh: missing accessToken");
+    const newProfileArn = data.profileArn || kc.profileArn;
     return {
       refresh: `${data.refreshToken || refreshToken}|desktop`,
       access: data.accessToken,
@@ -241,7 +250,8 @@ async function refreshKiroTokenDirect(credentials: OAuthCredentials): Promise<OA
       clientSecret: "",
       region,
       authMethod: "desktop" as KiroAuthMethod,
-      profileArn: data.profileArn || (credentials as KiroCredentials).profileArn,
+      profileArn: newProfileArn,
+      kiroRegion: kiroRegion || regionFromProfileArn(newProfileArn),
     };
   }
 
@@ -264,5 +274,6 @@ async function refreshKiroTokenDirect(credentials: OAuthCredentials): Promise<OA
     clientSecret: clientSecret,
     region,
     authMethod: "idc" as KiroAuthMethod,
+    kiroRegion,
   };
 }

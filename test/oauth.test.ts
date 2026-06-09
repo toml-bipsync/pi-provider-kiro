@@ -11,6 +11,12 @@ vi.mock("../src/kiro-cli.js", () => ({
   saveKiroCliCredentials: vi.fn(),
 }));
 
+// Mock kiro-ide to prevent fallback to real IDE credentials
+vi.mock("../src/kiro-ide.js", () => ({
+  getKiroIdeCredentials: vi.fn(() => undefined),
+  getKiroIdeCredentialsAllowExpired: vi.fn(() => undefined),
+}));
+
 describe("Feature 3: OAuth — Token Refresh", () => {
   // Interactive login / device code flow tests live in test/login.test.ts (Feature 10)
 

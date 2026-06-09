@@ -2,6 +2,7 @@
 // ABOUTME: Maps the backend response into pi's generic OAuthProviderUsage shape for /settings.
 
 import type { OAuthCredentials } from "@earendil-works/pi-ai";
+import { regionFromProfileArn, resolveApiRegion } from "./models.js";
 import type { KiroCredentials } from "./oauth.js";
 
 const USAGE_ENDPOINT = "https://q.{region}.amazonaws.com/";
@@ -117,7 +118,8 @@ interface KiroListProfilesResponse {
 }
 
 function getRegion(credentials: OAuthCredentials): string {
-  return (credentials as KiroCredentials).region || "us-east-1";
+  const kc = credentials as KiroCredentials;
+  return resolveApiRegion(kc.region, kc.kiroRegion || regionFromProfileArn(kc.profileArn));
 }
 
 function getEndpoint(credentials: OAuthCredentials): string {
