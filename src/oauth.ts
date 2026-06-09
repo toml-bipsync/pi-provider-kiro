@@ -56,7 +56,16 @@ export async function loginKiro(
       if (discovered) {
         kc.kiroRegion = discovered.region;
         kc.profileArn = discovered.profileArn;
+        console.error(`[pi-provider-kiro] Discovered kiroRegion: ${discovered.region}`);
+      } else {
+        console.error(`[pi-provider-kiro] Failed to discover kiroRegion via ListAvailableProfiles`);
       }
+    }
+    // Persist kiroRegion to cache file for modifyModels (pi may not pass custom fields)
+    if (kc.kiroRegion) {
+      const { writeCachedKiroRegion } = await import("./models.js");
+      writeCachedKiroRegion(kc.kiroRegion);
+      console.error(`[pi-provider-kiro] Wrote kiroRegion cache: ${kc.kiroRegion}`);
     }
     try {
       const { resolveApiRegion, updateKiroModelsCache } = await import("./models.js");
@@ -177,6 +186,11 @@ export async function refreshKiroToken(credentials: OAuthCredentials): Promise<O
       rc.kiroRegion = discovered.region;
       rc.profileArn = discovered.profileArn;
     }
+  }
+  // Persist kiroRegion to cache file for modifyModels (pi may not pass custom fields)
+  if (rc.kiroRegion) {
+    const { writeCachedKiroRegion } = await import("./models.js");
+    writeCachedKiroRegion(rc.kiroRegion);
   }
   if (!process.env.VITEST) {
     try {

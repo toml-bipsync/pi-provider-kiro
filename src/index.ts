@@ -6,7 +6,7 @@ import type { Api, Model, OAuthCredentials } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { getKiroCliCredentials } from "./kiro-cli.js";
 import { setExtensionContext } from "./login-ui.js";
-import { getCachedModels, kiroModels, regionFromProfileArn, resolveApiRegion } from "./models.js";
+import { getCachedModels, kiroModels, readCachedKiroRegion, regionFromProfileArn, resolveApiRegion } from "./models.js";
 import type { KiroCredentials } from "./oauth.js";
 import { loginKiro, refreshKiroToken } from "./oauth.js";
 import { streamKiro } from "./stream.js";
@@ -31,13 +31,19 @@ export default function (pi: ExtensionAPI) {
       modifyModels: (models: Model<Api>[], cred: OAuthCredentials) => {
         const kc = cred as KiroCredentials;
         let kiroRegion = kc.kiroRegion || regionFromProfileArn(kc.profileArn);
-        // Fallback: if stored creds lack kiroRegion, check kiro-cli for profileArn
+        // Fallback: check kiro-cli, then our own cache file
         if (!kiroRegion) {
           const cli = getKiroCliCredentials();
           if (cli?.kiroRegion) kiroRegion = cli.kiroRegion;
           else if (cli?.profileArn) kiroRegion = regionFromProfileArn(cli.profileArn);
         }
+        if (!kiroRegion) {
+          kiroRegion = readCachedKiroRegion();
+        }
         const apiRegion = resolveApiRegion(kc.region, kiroRegion);
+        if (process.env.PI_DEBUG) {
+          console.error(`[pi-provider-kiro] modifyModels: region=${kc.region} kiroRegion=${kc.kiroRegion} profileArn=${kc.profileArn?.slice(0, 40)} cached=${readCachedKiroRegion()} resolved=${apiRegion}`);
+        }
         const cachedKiro = getCachedModels(apiRegion);
         const nonKiro = models.filter((m: Model<Api>) => m.provider !== "kiro");
         const modifiedKiro = cachedKiro.map((m: Model<Api>) => ({

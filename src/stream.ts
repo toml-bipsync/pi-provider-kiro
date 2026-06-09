@@ -223,7 +223,14 @@ export function streamKiro(
     try {
       let accessToken = options?.apiKey;
       if (!accessToken) throw new Error("Kiro credentials not set. Run /login kiro or install kiro-cli.");
-      const endpoint = model.baseUrl || "https://q.us-east-1.amazonaws.com/generateAssistantResponse";
+      let endpoint = model.baseUrl || "https://q.us-east-1.amazonaws.com/generateAssistantResponse";
+
+      // Override endpoint region from cache/env if modifyModels ran before login
+      const { readCachedKiroRegion } = await import("./models.js");
+      const cachedRegion = process.env.KIRO_REGION || readCachedKiroRegion();
+      if (cachedRegion && !endpoint.includes(`q.${cachedRegion}.`)) {
+        endpoint = endpoint.replace(/q\.[^.]+\.amazonaws/, `q.${cachedRegion}.amazonaws`);
+      }
 
       const optionProfileArn =
         (options as unknown as { credentials?: { profileArn?: string }; profileArn?: string })?.credentials

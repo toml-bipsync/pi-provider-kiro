@@ -215,6 +215,27 @@ export function regionFromProfileArn(profileArn: string | undefined): string | u
   return parts.length >= 4 ? parts[3] : undefined;
 }
 
+const KIRO_REGION_CACHE = join(homedir(), ".pi", "agent", "kiro-region.json");
+
+export function readCachedKiroRegion(): string | undefined {
+  if (process.env.VITEST) return undefined;
+  try {
+    if (!existsSync(KIRO_REGION_CACHE)) return undefined;
+    const data = JSON.parse(readFileSync(KIRO_REGION_CACHE, "utf-8"));
+    return data.kiroRegion || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function writeCachedKiroRegion(region: string): void {
+  try {
+    writeFileSync(KIRO_REGION_CACHE, JSON.stringify({ kiroRegion: region }));
+  } catch {
+    // Ignore write errors
+  }
+}
+
 /**
  * Model availability per API region (allowlist).
  * Source: https://kiro.dev/docs/cli/models/
