@@ -49,9 +49,17 @@ export async function loginKiro(
 ): Promise<OAuthCredentials> {
   const creds = await loginKiroInternal(callbacks, preferredMethod);
   if (!process.env.VITEST) {
+    const kc = creds as KiroCredentials;
+    // Discover kiroRegion if not already set
+    if (!kc.kiroRegion && !kc.profileArn && kc.access) {
+      const discovered = await discoverKiroRegion(kc.access);
+      if (discovered) {
+        kc.kiroRegion = discovered.region;
+        kc.profileArn = discovered.profileArn;
+      }
+    }
     try {
       const { resolveApiRegion, updateKiroModelsCache } = await import("./models.js");
-      const kc = creds as KiroCredentials;
       const region = resolveApiRegion(kc.region, kc.kiroRegion);
       updateKiroModelsCache(creds.access, region, kc.profileArn).catch(() => {});
     } catch {
@@ -145,6 +153,31 @@ const EXPIRES_BUFFER_MS = 5 * 60 * 1000;
 
 export async function refreshKiroToken(credentials: OAuthCredentials): Promise<OAuthCredentials> {
   const refreshed = await refreshKiroTokenInternal(credentials);
+
+  // Ensure kiroRegion is always available — IDE layer may return creds without it
+  const rc = refreshed as KiroCredentials;
+  if (!rc.kiroRegion && !rc.profileArn) {
+    const inputKc = credentials as KiroCredentials;
+    if (inputKc.kiroRegion || inputKc.profileArn) {
+      rc.kiroRegion = inputKc.kiroRegion;
+      rc.profileArn = rc.profileArn || inputKc.profileArn;
+    } else {
+      // Input also lacked it (pre-upgrade creds); try kiro-cli
+      const { getKiroCliCredentials, getKiroCliCredentialsAllowExpired } = await import("./kiro-cli.js");
+      const cli = getKiroCliCredentials() ?? getKiroCliCredentialsAllowExpired();
+      if (cli?.kiroRegion) rc.kiroRegion = cli.kiroRegion;
+      else if (cli?.profileArn) rc.profileArn = cli.profileArn;
+    }
+  }
+
+  // Last resort: probe both API regions to discover where the profile lives
+  if (!rc.kiroRegion && !rc.profileArn && rc.access) {
+    const discovered = await discoverKiroRegion(rc.access);
+    if (discovered) {
+      rc.kiroRegion = discovered.region;
+      rc.profileArn = discovered.profileArn;
+    }
+  }
   if (!process.env.VITEST) {
     try {
       const { resolveApiRegion, updateKiroModelsCache } = await import("./models.js");
@@ -274,6 +307,35 @@ async function refreshKiroTokenDirect(credentials: OAuthCredentials): Promise<OA
     clientSecret: clientSecret,
     region,
     authMethod: "idc" as KiroAuthMethod,
+    profileArn: kc.profileArn,
     kiroRegion,
   };
+}
+
+const KIRO_API_REGIONS = ["us-east-1", "eu-central-1"];
+
+/** Probe both Kiro API regions to find which one has the user's profile. */
+async function discoverKiroRegion(
+  accessToken: string,
+): Promise<{ region: string; profileArn: string } | undefined> {
+  for (const region of KIRO_API_REGIONS) {
+    try {
+      const r = await fetch(`https://q.${region}.amazonaws.com/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-amz-json-1.0",
+          Authorization: `Bearer ${accessToken}`,
+          "X-Amz-Target": "AmazonCodeWhispererService.ListAvailableProfiles",
+        },
+        body: "{}",
+      });
+      if (!r.ok) continue;
+      const j = (await r.json()) as { profiles?: Array<{ arn?: string }> };
+      const arn = j.profiles?.find((p) => p.arn)?.arn;
+      if (arn) return { region, profileArn: arn };
+    } catch {
+      continue;
+    }
+  }
+  return undefined;
 }
